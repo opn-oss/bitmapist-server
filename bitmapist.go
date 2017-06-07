@@ -11,7 +11,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/Doist/bitmapist-server/internal/bitmapist"
+	"github.com/opn-oss/bitmapist-server/internal/bitmapist"
 	"github.com/artyom/autoflags"
 	"github.com/artyom/red"
 )
