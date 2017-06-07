@@ -18,10 +18,11 @@ import (
 
 func main() {
 	args := struct {
-		Addr string `flag:"addr,address to listen"`
-		File string `flag:"db,path to database file"`
-		Bak  string `flag:"bak,file to save backup to on SIGUSR1"`
-		Dbg  bool   `flag:"debug,log incoming commands"`
+		Addr   string `flag:"addr,address to listen"`
+		File   string `flag:"db,path to database file"`
+		Bak    string `flag:"bak,file to save backup to on SIGUSR1"`
+		Dbg    bool   `flag:"debug,log incoming commands"`
+		Nosave bool   `flag:"noautosave,disable automated periodic saving, force saving by sending SIGUSR2"`
 	}{
 		Addr: "localhost:6379",
 		File: "bitmapist.db",
@@ -38,6 +39,16 @@ func main() {
 	}
 	log.Println("loaded in", time.Since(begin))
 	s.WithLogger(log)
+	if args.Nosave {
+		s.WithoutAutosave()
+		go func() {
+			sigCh := make(chan os.Signal, 1)
+			signal.Notify(sigCh, syscall.SIGUSR2)
+			for range sigCh {
+				s.Save()
+			}
+		}()
+	}
 
 	srv := red.NewServer()
 	srv.WithLogger(log)

@@ -34,9 +34,10 @@ func New(dbFile string) (*Server, error) {
 		rm:    make(map[string]struct{}),
 		cache: make(map[string]cacheItem),
 
-		done:    make(chan struct{}),
-		doneAck: make(chan struct{}),
-		save:    make(chan struct{}),
+		done:       make(chan struct{}),
+		doneAck:    make(chan struct{}),
+		save:       make(chan struct{}),
+		noautosave: make(chan struct{}, 1),
 	}
 	err = s.db.View(func(tx *bolt.Tx) error {
 		if bkt := tx.Bucket([]byte("aux")); bkt != nil {
@@ -106,6 +107,8 @@ type Server struct {
 	done    chan struct{}
 	doneAck chan struct{}
 	save    chan struct{}
+
+	noautosave chan struct{}
 
 	mu    sync.Mutex
 	keys  map[string]struct{}  // all known keys
@@ -202,6 +205,9 @@ func (s *Server) loop() {
 		case <-s.done:
 			fn("final saving...", s.persist)
 			return
+		case <-s.noautosave:
+			ticker.Stop()
+			s.log.Println("periodic saving disabled")
 		}
 	}
 }
@@ -292,6 +298,24 @@ func (s *Server) persist() error {
 		return bkt.Put([]byte("keys"), buf.Bytes())
 	})
 	return err
+}
+
+// Save has the same effect as issuing BGSAVE command over connected client
+func (s *Server) Save() {
+	select {
+	case s.save <- struct{}{}:
+	default:
+	}
+}
+
+// WithoutAutosave disables automated periodic state saving. State is only
+// persisted when explicitly told calling Save() method or issuing BGSAVE
+// command over connected client.
+func (s *Server) WithoutAutosave() {
+	select {
+	case s.noautosave <- struct{}{}:
+	default:
+	}
 }
 
 func (s *Server) handleSlurp(req red.Request) (interface{}, error) {
